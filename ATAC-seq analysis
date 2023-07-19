@@ -1,0 +1,58 @@
+#-----------------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------创建atacseq环境------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+miniconda3/condabin/conda create -n atacseq -y python=2 bwa
+miniconda3/condabin/conda info --envs
+source activate miniconda3/envs/atacseq
+miniconda3/condabin/conda search trim_galore
+miniconda3/condabin/conda install -y sra-tools  
+miniconda3/condabin/conda install -y trim-galore samtools bedtools
+miniconda3/condabin/conda install -y deeptools homer meme
+miniconda3/condabin/conda install -y macs2 bowtie bowtie2
+miniconda3/condabin/conda install -y multiqc
+miniconda3/condabin/conda install -y sambamba
+conda deactivate
+perl miniconda3/envs/atacseq/share/homer/configureHomer.pl  -install hg19
+ls -lh miniconda3/envs/atacseq/share/homer/data/genomes 
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------peaks注释---------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+cd /BrainGVEX/ATAC-seq
+mkdir hommer_anno_wenming
+cp /BrainGVEX/ATAC-seq/Peaks/*narrowpeaks /BrainGVEX/ATAC-seq/hommer_anno_wenming/
+cd /BrainGVEX/ATAC-seq/hommer_anno_wenming 
+awk '{print $4"\t"$1"\t"$2"\t"$3"\t+"}' pec_braingvex_uic-uchicago_fc_atacseq_hiseq4000_2016-1946.narrowpeaks >2016-1946.narrowpeaks.homer_peaks.tmp
+
+annotatePeaks.pl  2016-1946.narrowpeaks.homer_peaks.tmp hg38  1>2016-1946.narrowpeaks.peakAnn.xls
+
+ls *.narrowpeaks | while read id;
+do 
+echo ${id##*_}.homer_peaks.tmp 
+done
+
+nohup ls *.narrowpeaks | while read id;
+do 
+echo $id
+awk '{print $4"\t"$1"\t"$2"\t"$3"\t+"}' $id >${id##*_}.homer_peaks.tmp
+annotatePeaks.pl  ${id##*_}.homer_peaks.tmp hg38  1>${id##*_}.peakAnn.xls
+  2>${id##*_}.annLog.txt
+done &
+#-----------------------------------------------------------------------------------------------------------------------------
+#---------------------------------------------------peaks差异分析-------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+mkdir Diffbind_results_wenming
+cd /BrainGVEX/ATAC-seq/Diffbind_results_wenming/
+source activate /miniconda3/envs/atacseq
+R
+library(DiffBind)
+rm(list=ls())
+options(stringsAsFactors = F)
+atac_bd <- dba(sampleSheet="/BrainGVEX/ATAC-seq/SampleSheet_bd1test.csv")
+atac_bd <- dba.count(atac_bd, bUseSummarizeOverlaps=TRUE)
+atac_bd <- dba.analyze(atac_bd, method = DBA_DESEQ2)
+comp.deseq <- dba.report(atac_bd, method=DBA_DESEQ2, contrast = 1, th=1)
+write.csv(comp.deseq, file="atac_bd.csv")
+cd /BrainGVEX/ATAC-seq/Diffbind_results_wenming
+source activate /miniconda3/envs/atacseq
+awk -F, 'NR>1{print $1"\t"$2"\t"$3"\t"$4"\t+"}' atac_bd.csv | sed 's/\"//g'> atac_bd.homer_peaks.tmp
+annotatePeaks.pl  atac_bd.homer_peaks.tmp hg19  1> atac_bd.peakAnn.xls
