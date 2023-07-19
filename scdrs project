@@ -1,0 +1,297 @@
+# creat gs file
+from utilities import munge_gs
+munge_gs("E:/anaconda/jupyter notebook/geneset.gs","E:/anaconda/jupyter notebook/height2022.tsv")
+# munge_gs("E:/anaconda/jupyter notebook/geneset.gs","E:/anaconda/jupyter notebook/ATACseq.tsv")
+# munge_gs("E:/anaconda/jupyter notebook/geneset.gs","E:/anaconda/jupyter notebook/TWAS.tsv")
+# munge_gs("E:/anaconda/jupyter notebook/geneset.gs","E:/anaconda/jupyter notebook/GWAS.tsv")
+# munge_gs("E:/anaconda/jupyter notebook/geneset.gs","E:/anaconda/jupyter notebook/RNAseq.tsv")
+df_gs = pd.read_csv("E:/anaconda/jupyter notebook/geneset.gs", sep="\t", index_col=0)
+
+import scdrs
+import scanpy as sc
+sc.set_figure_params(dpi=125)
+from anndata import AnnData
+from scipy import stats
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+import warnings
+
+warnings.filterwarnings("ignore")
+# scdrs.util.load_h5ad is a simple wrapper to read h5ad files
+# with basic data filtering
+adata = sc.read_h5ad("E:/anaconda/jupyter notebook/bd_brain.h5ad")
+
+
+# load geneset, convert homologs and overlap gene names to adata.var_names
+dict_gs = scdrs.util.load_gs(
+    "E:/anaconda/jupyter notebook/geneset.gs",
+    src_species="human",
+    dst_species="human",
+    to_intersect=adata.var_names,
+)
+
+# load covariates
+#df_cov = pd.read_csv("data/cov.tsv", sep="\t", index_col=0)
+
+# preprocess data to
+# (1) regress out from covariates
+# (2) group genes into bins by mean and variance
+scdrs.preprocess(adata, n_mean_bin=20, n_var_bin=20, copy=False)
+
+new_cluster_names = [
+    'Microglial cell_3', 'Microglial cell_1',
+    'Neuron', 'Astrocyte_1',
+    'Oligodendrocyte progenitor cell', 'Astrocyte_2',
+    'Neural progenitor cell', 'Ventral medial ganglionic eminence precursor cell',
+    'Progenitor cell','ADCY1 group',
+    'Microglial cell_2','Astrocyte_3']
+adata.rename_categories('leiden', new_cluster_names)
+
+dict_df_score = dict()
+for trait in dict_gs:
+    gene_list, gene_weights = dict_gs[trait]
+    dict_df_score[trait] = scdrs.score_cell(
+        data=adata,
+        gene_list=gene_list,
+        gene_weight=gene_weights,
+        ctrl_match_key="mean_var",
+        n_ctrl=1000,
+        weight_opt="vs",
+        return_ctrl_raw_score=False,
+        return_ctrl_norm_score=True,
+        verbose=False,
+    )
+
+for key in dict_df_score:
+    adata.obs[key] = dict_df_score[key]["norm_score"]
+
+
+sc.set_figure_params(figsize=[3.5, 3.5], dpi=150)
+sc.pl.umap(
+    adata,
+    color="leiden",
+    ncols=1,
+    color_map="RdBu_r",
+    vmin=-5,
+    vmax=5,
+)
+
+sc.pl.umap(
+    adata,
+    color=dict_df_score.keys(),
+    color_map="RdBu_r",
+    vmin=-4,
+    vmax=4,
+    s=40,
+)
+
+# Cell types were identified for each cluster based on characteristic markers and annotations from CellMarker 2.0
+marker_genes = ['PLXNA4','TSC22D1','SOX11','TUBB2A',
+                'RFTN2','CKB','SMC4','ZIC2',
+                'DLX6-AS1','ADCY1','FOLR2','PDGFRB']
+sc.pl.stacked_violin(adata, marker_genes, groupby='leiden', rotation=90)
+
+
+
+
+# Association analysis of predefined cell types with BD------------------------------------------------------------------------------
+df_stats = scdrs.method.downstream_group_analysis(
+    adata=adata,
+    df_full_score=dict_df_score["HEIGHT"],
+    group_cols=["leiden"],
+)["leiden"]
+
+display(df_stats.style.set_caption("Group-level statistics for HEIGHT"))
+
+
+
+
+
+
+
+
+# Association analysis of predefined cell types with BD in various brain regions-------------------------------------------------------------------
+import scdrs
+import scanpy as sc
+sc.set_figure_params(dpi=125)
+from anndata import AnnData
+from scipy import stats
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+import warnings
+
+warnings.filterwarnings("ignore")
+
+adata = sc.read_h5ad("E:/anaconda/jupyter notebook/bd_brain.h5ad")
+
+dict_gs = scdrs.util.load_gs(
+    "E:/anaconda/jupyter notebook/geneset.gs",
+    src_species="human",
+    dst_species="human",
+    to_intersect=adata.var_names,
+)
+
+scdrs.preprocess(adata, n_mean_bin=20, n_var_bin=20, copy=False)
+
+dict_df_score = dict()
+for trait in dict_gs:
+    gene_list, gene_weights = dict_gs[trait]
+    dict_df_score[trait] = scdrs.score_cell(
+        data=adata,
+        gene_list=gene_list,
+        gene_weight=gene_weights,
+        ctrl_match_key="mean_var",
+        n_ctrl=1000,
+        weight_opt="vs",
+        return_ctrl_raw_score=False,
+        return_ctrl_norm_score=True,
+        verbose=False,
+    )
+
+odata = adata[adata.obs.leiden == "Astrocyte_1"] 
+# odata = adata[adata.obs.leiden == "Astrocyte_2"] 
+...
+# odata = adata[adata.obs.leiden == "ADCY1 group"]
+
+df_stats = scdrs.method.downstream_group_analysis(
+    adata=odata,
+    df_full_score=dict_df_score["HEIGHT"],
+    group_cols=["tissue"],
+)["tissue"]
+
+display(df_stats.style.set_caption("Group-level statistics for HEIGHT"))
+
+
+
+
+
+# Pseudotime Trajectory Inference for Glial Cells--------------------------------------------------------------------------------------
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as pt
+from matplotlib import rcParams
+import scanpy as sc
+sc.settings.verbosity = 3 
+sc.logging.print_versions()
+import os 
+os.getcwd()
+
+results_file = 'pseudotime.h5ad'
+sc.settings.set_figure_params(dpi=80, frameon=False, figsize=(3, 3), facecolor='white') 
+data = sc.read_h5ad("E:/anaconda/jupyter notebook/bd_brain.h5ad")
+
+sc.tl.draw_graph(data)
+sc.pl.draw_graph(data, color='leiden', legend_loc='right margin',title = "")
+
+sc.tl.diffmap(data)
+sc.pp.neighbors(data, n_neighbors=10, use_rep='X_diffmap')
+sc.tl.draw_graph(data)
+sc.pl.draw_graph(data, color='leiden', legend_loc='on data')
+
+import igraph
+sc.pl.draw_graph(data, color=['TSC22D1','FOLR2','PLXNA4'],  frameon=True,legend_loc='on data',size=35)
+
+data.uns['iroot'] = np.flatnonzero(data.obs['leiden']  == 'Neural progenitor cell')[0]
+sc.tl.dpt(data)
+sc.pl.draw_graph(data, color=['leiden'], legend_loc='right margin',title = [''], frameon=True,size=35)
+sc.pl.draw_graph(data, color=['dpt_pseudotime'], legend_loc='on data',title = ['pseudotime'], frameon=True,size=35)
+
+paths = [('Astrocyte_1', ['Neural progenitor cell', 'Microglial cell_3','Microglial cell_1', 'Astrocyte_1']),
+         ('Astrocyte_2', ['Neural progenitor cell', 'Astrocyte_2']),
+         ('Astrocyte_3', ['Neural progenitor cell', 'Astrocyte_3']),
+         ('Microglial cell_1', ['Neural progenitor cell', 'Microglial cell_3','Microglial cell_1']),
+         ('Microglial cell_2', ['Neural progenitor cell', 'Microglial cell_3', 'Microglial cell_2']),
+         ('Microglial cell_3', ['Neural progenitor cell','Microglial cell_3']),
+         ('Oligodendrocyte \r\n progenitor cell', ['Neural progenitor cell', 'Oligodendrocyte progenitor cell'])
+        
+        ]
+
+import matplotlib.pyplot as pl
+
+_, axs = pl.subplots(ncols=7, figsize=(17, 2.5), gridspec_kw={'wspace': 0.05, 'left': 0.12})
+pl.subplots_adjust(left=0.05, right=0.98, top=0.82, bottom=0.2)
+for ipath, (descr, path) in enumerate(paths):
+    _, data1 = sc.pl.paga_path(
+        data, path, gene_names,
+        show_node_names=False,
+        ax=axs[ipath],
+        ytick_fontsize=12,
+        left_margin=0.15,
+        n_avg=50,
+        annotations=['distance'],
+        show_yticks=True if ipath==0 else False,
+        show_colorbar=False,
+        color_map='Greys',
+        groups_key='clusters',
+        color_maps_annotations={'distance': 'viridis'},
+        title='{} path'.format(descr),
+        return_data=True,
+        show=False)
+pl.savefig('./figures/paga_path_paul15.pdf')
+pl.show()
+
+
+
+
+
+
+# Pearson correlation analysis of gene expression with scDRS disease scores----------------------------------------------------------------------
+
+import scdrs
+import scanpy as sc
+sc.set_figure_params(dpi=125)
+from anndata import AnnData
+from scipy import stats
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+import warnings
+
+warnings.filterwarnings("ignore")
+
+# scdrs.util.load_h5ad is a simple wrapper to read h5ad files
+# with basic data filtering
+adata = sc.read_h5ad("E:/anaconda/jupyter notebook/bd.h5ad")
+
+
+# load geneset, convert homologs and overlap gene names to adata.var_names
+dict_gs = scdrs.util.load_gs(
+    "E:/anaconda/jupyter notebook/geneset.gs",
+    src_species="human",
+    dst_species="human",
+    to_intersect=adata.var_names,
+)
+
+# load covariates
+#df_cov = pd.read_csv("data/cov.tsv", sep="\t", index_col=0)
+
+# preprocess data to
+# (1) regress out from covariates
+# (2) group genes into bins by mean and variance
+scdrs.preprocess(adata, n_mean_bin=20, n_var_bin=20, copy=False)
+
+dict_df_score = dict()
+for trait in dict_gs:
+    gene_list, gene_weights = dict_gs[trait]
+    dict_df_score[trait] = scdrs.score_cell(
+        data=adata,
+        gene_list=gene_list,
+        gene_weight=gene_weights,
+        ctrl_match_key="mean_var",
+        n_ctrl=1000,
+        weight_opt="vs",
+        return_ctrl_raw_score=False,
+        return_ctrl_norm_score=True,
+        verbose=False,
+    )
+
+RNAseqgene=scdrs.method.downstream_gene_analysis(adata, dict_df_score["BD_RNAseq"])
+RNAseqgene.to_csv("RNAseqgenenew.csv")
