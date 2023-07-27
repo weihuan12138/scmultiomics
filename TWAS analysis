@@ -1,0 +1,22 @@
+cd /home/ldsc
+conda activate ldsc
+python2 munge_sumstats.py --sumstats /home/software/fusion_twas-master/BDGWAS.txt  --out /home/software/fusion_twas-master/BDGWAS --merge-alleles w_hm3.snplist --chunksize 500000
+conda deactivate
+
+
+---------------------------Create a command file BDTWAS.txt--------------------------------------------------
+for i in `seq 1 22`; do Rscript FUSION.assoc_test.R --perm 5000  --sumstats /home/BD_scdrs/bdgwasnew.f.sumstats --weights /home/software/fusion_twas-master/WEIGHTS/CMC.BRAIN.RNASEQ.pos --weights_dir /home/software/fusion_twas-master/WEIGHTS/ --ref_ld_chr ./LDREF/1000G.EUR. --chr $i --out /home/BD_scdrs/twasresults/bd.chr$i.dat; done
+-------------------------------------------------------------------------------------------------------------
+
+cd /home/software/fusion_twas-master/BDGWAS
+nohup BDTWAS.txt &
+
+-----------------------------R-------------------------------------------------------------------------------
+setwd("/home/BD_scdrs/twasresults")
+temp <- list.files(pattern = "*.dat")
+x <- data.frame()
+for(i in 1:length(temp)){
+  test <- read.table(temp[i],header=T, stringsAsFactors = F)
+  x <- rbind(test,x)
+}
+write.csv(x,row.names=FALSE,quote=FALSE, file="BDTWAS.csv")
