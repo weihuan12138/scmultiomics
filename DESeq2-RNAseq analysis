@@ -1,0 +1,25 @@
+BiocManager::install("DESeq2")
+library(DESeq2)
+
+setwd("/home/BD_scdrs/RNAseqresults")
+count <- read.table("/home/BD_scdrs/RNAseqresults/raw_count_file", header = T, row.names = 1)
+count <- count[rowMeans(count)>1,]
+data <- read.table("/home/BD_scdrs/RNAseqresults/sample.data.txt",header = T,row.names = 1)
+data[,1] <- as.factor(data$Type)
+
+all(rownames(data) %in% colnames(count))
+all(rownames(data) == colnames(count))
+
+dds <-  DESeqDataSetFromMatrix(countData = count,colData = data,design = ~ Type)
+dim(dds)
+​
+dds <- dds[rowSums(counts(dds)) > 1,]
+nrow(dds) 
+​
+dep <- DESeq(dds)
+res <- results(dep)
+diff = res
+diff <- na.omit(diff) 
+dim(diff)
+
+write.csv(diff,"all_diff.csv")
